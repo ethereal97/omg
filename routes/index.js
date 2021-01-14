@@ -1,17 +1,22 @@
 const express = require("express");
 const router = express.Router();
 const serverStarted = Date.now();
-const maxAge = 30 * 60 * 1000;
 
 const serverInfo = {
   requested: 0,
+  latestClients: [],
+  latestRequest: null,
+  previousRequest: Date.now(),
 };
 
 router.use((req, res, next) => {
+  serverInfo.latestClients.unshift(req.headers["forwarded"] || "::1");
+  serverInfo.latestClients = serverInfo.latestClients.slice(0, 20);
+  serverInfo.latestRequest = serverInfo.previousRequest;
+  serverInfo.previousRequest = Date.now();
   serverInfo.requested++;
   req.accessToken = req.headers["x-access-token"] || null;
-  res.setHeader("Cache-Control", "private;max-age=60");
-  console.log(new Date().toISOString(), "[", req.method, "]", req.path);
+  res.setHeader("Cache-Control", "private;max-age=60;s-max-age=300");
   next();
 });
 
@@ -25,21 +30,30 @@ router.use("/review", require("./review"));
 router.all("/status", (req, res) => {
   const status = {
     started: serverStarted,
-    expired: serverStarted + maxAge,
-    requested: serverInfo.requested,
     timestamp: Date.now(),
+    latestRequest: serverInfo.latestRequest,
+    clients: serverInfo.latestClients.slice(0, 10),
+    requested: serverInfo.requested,
   };
-  if ("utc" in req.query) {
-    status.started = new Date(status.started).toUTCString();
-    status.expired = new Date(status.expired).toUTCString();
-    status.timestamp = new Date(status.timestamp).toUTCString();
+  if (req.query.mode) serverInfo.latestClients[0] = `[${req.query.mode}]`;
+  if ("tz" in req.query) {
+    let loc = req.query.lc || "en-US";
+    let timeZone = req.query.tz || "UTC";
+    status.started = new Date(status.started).toLocaleString(loc, {
+      timeZone,
+    });
+    status.timestamp = new Date(status.timestamp).toLocaleString(loc, {
+      timeZone,
+    });
+    status.latestRequest = new Date(status.latestRequest).toLocaleString(loc, {
+      timeZone,
+    });
   }
   res.json(status);
 });
 
 router.use((req, res) => {
-  res.status(404).json({ error: "request not found" }).end();
-  console.log("[404]", req.path);
+  res.status(404).end();
 });
 
 module.exports = router;

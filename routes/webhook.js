@@ -23,7 +23,6 @@ router.post("/", (req, res) => {
     timestamp: Date.now(),
   };
   payloads.push(payload);
-  console.log(req.headers);
   res.status(200).end();
 });
 
